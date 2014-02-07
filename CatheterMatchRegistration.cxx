@@ -18,6 +18,12 @@
 #include "itkTransformFileReader.h"
 #include "itkTransformFileWriter.h"
 
+#include "itkMaskImageFilter.h"
+#include "itkThresholdImageFilter.h"
+#include "itkNearestNeighborInterpolateImageFunction.h"
+#include "itkImageMaskSpatialObject.h"
+
+
 #include "itkQuaternionRigidTransformGradientDescentOptimizer.h"
 #include "itkImageRegistrationMethod.h"
 #include "itkMattesMutualInformationImageToImageMetric.h"
@@ -154,6 +160,7 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   const    unsigned int ImageDimension = 3;
   typedef  T1                                        FixedPixelType; // ##
   typedef itk::Image<FixedPixelType, ImageDimension> FixedImageType; // ##
+  typedef itk::Image< unsigned char, ImageDimension >  MaskImageType;
 
   typedef itk::ImageFileReader<FixedImageType>                   FixedFileReaderType;   // ##
   typedef itk::OrientImageFilter<FixedImageType, FixedImageType> FixedOrientFilterType; // ##
@@ -175,6 +182,17 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   typedef itk::ImageFileWriter<MovingImageType>                                           WriterType;               // ##
   typedef itk::ImageFileWriter<FixedImageType>                                            FixedWriterType;          // ##
   typedef itk::ContinuousIndex<double, 3>                                                 ContinuousIndexType;
+
+  typedef itk::ThresholdImageFilter<FixedImageType>  FixedThresholdFilterType;
+  typedef itk::ThresholdImageFilter<MovingImageType>  MovingThresholdFilterType;
+  //typedef itk::MaskImageFilter<FixedImageType, FixedImageType, FixedImageType>  FixedMaskFilterType;
+  //typedef itk::MaskImageFilter<MovingImageType, MovingImageType, MovingImageType>  MovingMaskFilterType;
+  typedef itk::ResampleImageFilter<FixedImageType, MaskImageType>     FixedResampleType;
+  typedef itk::ResampleImageFilter<MovingImageType, MaskImageType>    MovingResampleType;
+  typedef itk::NearestNeighborInterpolateImageFunction<FixedImageType> FixedNNInterpolator;
+  typedef itk::NearestNeighborInterpolateImageFunction<MovingImageType> MovingNNInterpolator;
+
+  typedef itk::ImageMaskSpatialObject< ImageDimension >   MaskType;
 
   // bool DoInitializeTransform = false;
   // int RandomSeed = 1234567;
@@ -216,6 +234,51 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     std::cerr << err << std::endl;
     return EXIT_FAILURE;
     }
+
+
+  // Read the fixed and moving mask images
+  bool fMask = false;
+
+  typename FixedFileReaderType::Pointer fixedMaskReader;
+  typename MovingFileReaderType::Pointer movingMaskReader;
+
+  if ( FixedMaskImageFileName.length() > 0 && MovingMaskImageFileName.length() > 0)
+    {
+    fMask = true;
+
+    fixedMaskReader = FixedFileReaderType::New();
+    fixedMaskReader->SetFileName( FixedMaskImageFileName.c_str() );
+    
+    try
+      {
+      collector.Start( "Read fixed mask volume" );
+      fixedMaskReader->Update();
+      collector.Stop( "Read fixed mask volume" );
+      }
+    catch( itk::ExceptionObject & err )
+      {
+      std::cerr << "Error Reading Fixed mask image: " << std::endl;
+      std::cerr << err << std::endl;
+      return EXIT_FAILURE;
+      }
+    
+    movingMaskReader = MovingFileReaderType::New();
+    movingMaskReader->SetFileName( MovingMaskImageFileName.c_str() );
+    
+    try
+      {
+      collector.Start( "Read moving mask volume" );
+      movingMaskReader->Update();
+      collector.Stop( "Read moving mask volume" );
+      }
+    catch( itk::ExceptionObject & err )
+      {
+      std::cerr << "Error Reading Moving image: " << std::endl;
+      std::cerr << err << std::endl;
+      return EXIT_FAILURE;
+      }
+    }
+
 
   /*
   typename FixedWriterType::Pointer fixedWriter = FixedWriterType::New();
@@ -320,6 +383,67 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     groundTruthTransform->Print( std::cout );
     }
 
+
+  //// Masking
+  // Threshold -- have to threshold the mask volume first
+  //typename FixedImageType::Pointer fixedMaskedImage;
+  //typename MovingImageType::Pointer movingMaskedImage;
+  MaskType::Pointer  fixedSpatialObjectMask = MaskType::New();
+  MaskType::Pointer  movingSpatialObjectMask = MaskType::New();
+
+  if ( fMask )
+    {
+    typename FixedThresholdFilterType::Pointer fixedThresholdFilter = FixedThresholdFilterType::New();
+    typename MovingThresholdFilterType::Pointer movingThresholdFilter = MovingThresholdFilterType::New();
+
+    // Threshold to remove labels other than 1
+    fixedThresholdFilter->SetInput(0, fixedMaskReader->GetOutput() );
+    fixedThresholdFilter->SetOutsideValue(0);
+    fixedThresholdFilter->ThresholdOutside(1, 1);
+    fixedThresholdFilter->ReleaseDataFlagOn();
+
+    movingThresholdFilter->SetInput(0, movingMaskReader->GetOutput() );
+    movingThresholdFilter->SetOutsideValue(0);
+    movingThresholdFilter->ThresholdOutside(1, 1);
+    movingThresholdFilter->ReleaseDataFlagOn();
+
+    // Resample
+    typename FixedNNInterpolator::Pointer fixednninterp = FixedNNInterpolator::New();
+    typename MovingNNInterpolator::Pointer movingnninterp = MovingNNInterpolator::New();
+
+    typename FixedResampleType::Pointer  fixedResample = FixedResampleType::New();
+    fixedResample->SetInput( fixedThresholdFilter->GetOutput() );
+    fixedResample->SetOutputParametersFromImage( fixedReader->GetOutput() );
+    fixedResample->SetInterpolator( fixednninterp );
+    fixedResample->SetDefaultPixelValue( 0 );
+    fixedResample->ReleaseDataFlagOn();
+    fixedResample->Update();
+
+    typename MovingResampleType::Pointer  movingResample = MovingResampleType::New();
+    movingResample->SetInput( movingThresholdFilter->GetOutput() );
+    movingResample->SetOutputParametersFromImage( movingReader->GetOutput() );
+    movingResample->SetInterpolator( movingnninterp );
+    movingResample->SetDefaultPixelValue( 0 );
+    movingResample->ReleaseDataFlagOn();
+    movingResample->Update();
+
+    //// Mask images
+    //typename FixedMaskFilterType::Pointer fixedMaskFilter = FixedMaskFilterType::New();
+    //fixedMaskFilter->SetInput( 0, fixedReader->GetOutput() );
+    //fixedMaskFilter->SetInput( 1, fixedResample->GetOutput() );
+    //fixedMaskFilter->SetOutsideValue( 0 );
+    //fixedMaskFilter->Update();
+    //
+    //typename MovingMaskFilterType::Pointer movingMaskFilter = MovingMaskFilterType::New();
+    //movingMaskFilter->SetInput( 0, movingReader->GetOutput() );
+    //movingMaskFilter->SetInput( 1, movingResample->GetOutput() );
+    //movingMaskFilter->SetOutsideValue( 0 );
+    //movingMaskFilter->Update();
+
+    fixedSpatialObjectMask->SetImage( fixedResample->GetOutput());
+    movingSpatialObjectMask->SetImage( movingResample->GetOutput());
+    }    
+
   // user decide if the input images need to be smoothed
 
   // Reorient to axials to avoid issues with registration metrics not
@@ -344,7 +468,7 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     {
     typedef itk::BinomialBlurImageFilter<FixedImageType, FixedImageType> BinomialFixedType;
     typename BinomialFixedType::Pointer BinomialFixed = BinomialFixedType::New();
-    BinomialFixed->SetInput(   fixedReader->GetOutput() );
+    BinomialFixed->SetInput( fixedReader->GetOutput() );
     BinomialFixed->SetRepetitions( FixedImageSmoothingFactor * 2);
     itk::PluginFilterWatcher watchfilter(BinomialFixed, "Binomial Filter Fixed",  CLPProcessInformation, 1.0 / 5.0,
                                          1.0 / 5.0);
@@ -353,7 +477,7 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     }
   else
     {
-    orientFixed->SetInput(fixedReader->GetOutput() );
+    orientFixed->SetInput( fixedReader->GetOutput() );
     }
   collector.Start( "Orient fixed volume" );
   orientFixed->Update();
@@ -369,7 +493,7 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     {
     typedef itk::BinomialBlurImageFilter<MovingImageType,  MovingImageType> BinomialMovingType;
     typename BinomialMovingType::Pointer BinomialMoving = BinomialMovingType::New();
-    BinomialMoving->SetInput(   movingReader->GetOutput() );
+    BinomialMoving->SetInput(  movingReader->GetOutput() );
     BinomialMoving->SetRepetitions( MovingImageSmoothingFactor * 2);
     itk::PluginFilterWatcher watchfilter(BinomialMoving, "Binomial Filter Moving",  CLPProcessInformation, 1.0 / 5.0,
                                          3.0 / 5.0);
@@ -378,7 +502,7 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     }
   else
     {
-    orientMoving->SetInput(movingReader->GetOutput() );
+    orientMoving->SetInput( movingReader->GetOutput() );
     }
 
   collector.Start( "Orient moving volume" );
@@ -523,6 +647,12 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   metric->SetNumberOfSpatialSamples( SpatialSamples );
   metric->ReinitializeSeed(314159265);
 
+  if (fMask)
+    {
+    metric->SetFixedImageMask( fixedSpatialObjectMask );
+    metric->SetMovingImageMask( movingSpatialObjectMask );
+    }
+
   // Create the interpolator
   //
   typename InterpolatorType::Pointer interpolator = InterpolatorType::New();
@@ -537,6 +667,8 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   registration->SetInterpolator( interpolator );
   registration->SetFixedImage( orientFixed->GetOutput() );
   registration->SetMovingImage( orientMoving->GetOutput() );
+
+  
 /*
 typename FixedWriterType::Pointer fixedWriter2 = FixedWriterType::New();
 fixedWriter2->SetFileName ( "/tmp/reginput-fixed.nrrd" );

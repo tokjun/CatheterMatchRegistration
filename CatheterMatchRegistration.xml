@@ -103,6 +103,24 @@
     </double>
   </parameters>
   <parameters>
+    <label>Catheter</label>
+    <description><![CDATA[Catheter Positions and Orientations]]></description>
+    <transform fileExtensions=".txt">
+      <name>FixedCatheterTransform</name>
+      <longflag>fixedCatheterTransform</longflag>
+      <description><![CDATA[Linear transform that represents position and orientation of catheter in the fixed volume.]]></description>
+      <label>Fixed Catheter Transform</label>
+      <channel>input</channel>
+    </transform>
+    <transform fileExtensions=".txt">
+      <name>MovingCatheterTransform</name>
+      <longflag>movingCatheterTransform</longflag>
+      <description><![CDATA[Linear transform that represents position and orientation of catheter in the moving volume.]]></description>
+      <label>Moving Catheter Transform</label>
+      <channel>input</channel>
+    </transform>
+  </parameters>
+  <parameters>
     <label>IO</label>
     <description><![CDATA[Input/output parameters]]></description>
     <transform fileExtensions=".txt">
@@ -124,6 +142,20 @@
       <label>Moving Image</label>
       <channel>input</channel>
       <index>1</index>
+      <description><![CDATA[Moving image]]></description>
+    </image>
+    <image type="label">
+      <name>FixedMaskImageFileName</name>
+      <longflag>fixedmaskimagefile</longflag>
+      <label>Fixed Mask Image</label>
+      <channel>input</channel>
+      <description><![CDATA[Fixed image to which to register]]></description>
+    </image>
+    <image type="label">
+      <name>MovingMaskImageFileName</name>
+      <longflag>movingmaskimagefile</longflag>
+      <label>Moving Mask Image</label>
+      <channel>input</channel>
       <description><![CDATA[Moving image]]></description>
     </image>
     <transform fileExtensions=".txt" reference="MovingImageFileName">
