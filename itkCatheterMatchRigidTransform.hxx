@@ -110,7 +110,8 @@ CatheterMatchRigidTransform<TScalar>
 
   // parameter[0] : Translation along the transform axis (d)
   // parameter[1] : Rotation about the transform axis (positive when clockwise) (theta)
-  
+
+  // Forward:
   // Let 
   //   base rotation quaternion: q_b
   //   base translation: <t_b>
@@ -131,7 +132,10 @@ CatheterMatchRigidTransform<TScalar>
   //          = q q_b (<v>) q*_b q* + q q_b (<t_b> - <p_b>) q*_b q* + <p_b> + d <v_a> )
   //            -------------------   --------------------------------------------------
   //               Rotation                              offset
-
+  // Inverse:
+  //
+  //    ( To be described ... )
+  //
 
   // Save parameters. Needed for proper operation of TransformUpdateParameters.
   if( &parameters != &(this->m_Parameters) )
@@ -141,25 +145,43 @@ CatheterMatchRigidTransform<TScalar>
   TScalar d = parameters[0];
   TScalar theta = parameters[1];
 
-  VnlQuaternionType q(m_TransformAxisNormal, theta);
-
-  m_Rotation = q * m_BaseRotation;
-
+  //// Forward:
+  //VnlQuaternionType q(m_TransformAxisNormal, theta);
+  //
+  //m_Rotation = q * m_BaseRotation;
+  //
+  //OutputVnlVectorType vnlTranslation 
+  //  = m_Rotation.rotate(m_BaseTranslation - m_TransformAxisOrigin)
+  //  + m_TransformAxisOrigin + d * m_TransformAxisNormal;
+  //
+  //this->ComputeMatrix();
+  //
+  //OutputVectorType translation;
+  //translation.SetVnlVector(vnlTranslation);
+  //this->SetVarTranslation(translation);
+  //this->ComputeOffset();
+  
+  //// Inverse:
+  VnlQuaternionType q(m_TransformAxisNormal, -theta);  
+  m_Rotation = m_BaseRotation.inverse() * q;
+  
   OutputVnlVectorType vnlTranslation 
-    = m_Rotation.rotate(m_BaseTranslation - m_TransformAxisOrigin)
-    + m_TransformAxisOrigin + d * m_TransformAxisNormal;
+    = m_Rotation.rotate(d * m_TransformAxisNormal - m_TransformAxisOrigin) 
+    + m_TransformAxisOrigin - m_BaseTranslation;
 
   this->ComputeMatrix();
-
+  
   OutputVectorType translation;
   translation.SetVnlVector(vnlTranslation);
   this->SetVarTranslation(translation);
   this->ComputeOffset();
-  
+
+
   // Modified is always called since we just have a pointer to the
   // parameters and cannot know if the parameters have changed.
   this->Modified();
 }
+
 
 // Set Parameters
 template <typename TScalar>
@@ -173,26 +195,22 @@ typename CatheterMatchRigidTransform<TScalar>::ParametersType
   VnlQuaternionType quaternion  = this->GetRotation();
   OutputVectorType  translation = this->GetTranslation();
   
-  //// Transfer the quaternion part
-  //unsigned int par = 0;
-  //for( unsigned int j = 0; j < 4; j++ )
-  //  {
-  //  this->m_Parameters[par] = quaternion[j];
-  //  ++par;
-  //  }
-  //// Transfer the constant part
-  //for( unsigned int i = 0; i < SpaceDimension; i++ )
-  //  {
-  //  this->m_Parameters[par] = translation[i];
-  //  ++par;
-  //  }
+  //// Forward:
+  //VnlQuaternionType q;
+  //q = quaternion * m_BaseRotation.inverse();
+  //this->m_Parameters[1] = q.angle();
+  //
+  //OutputVnlVectorType t = translation.GetVnlVector();
+  //OutputVnlVectorType s = t - quaternion.rotate(m_BaseTranslation - m_TransformAxisOrigin) - m_TransformAxisOrigin;
+  //this->m_Parameters[0] = s.magnitude();
 
+  // Inverse:
   VnlQuaternionType q;
-  q = quaternion * m_BaseRotation.inverse();
-  this->m_Parameters[1] = q.angle();
-
+  q = m_BaseRotation * quaternion;
+  this->m_Parameters[1] = - q.angle();
+  
   OutputVnlVectorType t = translation.GetVnlVector();
-  OutputVnlVectorType s = t - quaternion.rotate(m_BaseTranslation - m_TransformAxisOrigin) - m_TransformAxisOrigin;
+  OutputVnlVectorType s = quaternion.inverse().rotate(t + m_BaseTranslation - m_TransformAxisOrigin) + m_TransformAxisOrigin;
   this->m_Parameters[0] = s.magnitude();
 
   return this->m_Parameters;
