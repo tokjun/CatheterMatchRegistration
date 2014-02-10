@@ -652,107 +652,119 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
       = dynamic_cast<FloatMatrixOffsetType *>(movingCatheterTransform.GetPointer() );
     
     
-    if (ffa)
+    //if (ffa)
+    //  {
+    //  //FloatMatrixOffsetType::MatrixType matrix = ffa->GetMatrix();  // Cannot do this
+    //  vnl_matrix<double> t(3, 3);
+    //  for( int i = 0; i < 3; ++i )
+    //    {
+    //    for( int j = 0; j < 3; ++j )
+    //      {
+    //      t.put(i, j, ffa->GetMatrix().GetVnlMatrix().get(i, j) );
+    //      }
+    //    }
+    //  vnl_svd<double> svd( t );
+    //  //vnl_svd<float> svd(ffa->GetMatrix().GetVnlMatrix() );
+    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+    //  FloatMatrixOffsetType::OffsetType offset = ffa->GetOffset();
+    //  std::cerr << "transform: " << matrix << std::endl;
+    //  for (int i = 0; i < 3; i ++)
+    //    {
+    //    axisNormal[i] = matrix[i][2];
+    //    //axisNormal[i] = matrix[2][i];
+    //    axisOrigin[i] = offset[i];
+    //    }
+    //  }
+    //else if (fda)
+    //  {
+    //  //DoubleMatrixOffsetType::MatrixType matrix = fda->GetMatrix(); // Cannot do this
+    //  vnl_svd<double> svd(fda->GetMatrix().GetVnlMatrix() );
+    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+    //  DoubleMatrixOffsetType::OffsetType offset = fda->GetOffset();
+    //  std::cerr << "transform: " << matrix << std::endl;
+    //  for (int i = 0; i < 3; i ++)
+    //    {
+    //    axisNormal[i] = matrix[i][2];
+    //    //axisNormal[i] = matrix[2][i];
+    //    axisOrigin[i] = offset[i];
+    //    }
+    //  }
+    //
+    //if (mfa)
+    //  {
+    //  //FloatMatrixOffsetType::MatrixType matrix = mfa->GetMatrix();
+    //  vnl_matrix<double> t(3, 3);
+    //  for( int i = 0; i < 3; ++i )
+    //    {
+    //    for( int j = 0; j < 3; ++j )
+    //      {
+    //      t.put(i, j, mfa->GetMatrix().GetVnlMatrix().get(i, j) );
+    //      }
+    //    }
+    //  vnl_svd<double> svd( t );
+    //  //vnl_svd<float> svd(mfa->GetMatrix().GetVnlMatrix() );
+    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+    //  FloatMatrixOffsetType::OffsetType offset = mfa->GetOffset();
+    //  for (int i = 0; i < 3; i ++)
+    //    {
+    //    movingCatheterNormal[i] = matrix[i][2];
+    //    //movingCatheterNormal[i] = matrix[2][i];
+    //    movingCatheterOrigin[i] = offset[i];
+    //    }
+    //  }
+    //else if (mda)
+    //  {
+    //  //DoubleMatrixOffsetType::MatrixType matrix = mda->GetMatrix();
+    //  vnl_svd<double> svd(mda->GetMatrix().GetVnlMatrix());
+    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+    //  DoubleMatrixOffsetType::OffsetType offset = mda->GetOffset();
+    //  for (int i = 0; i < 3; i ++)
+    //    {
+    //    movingCatheterNormal[i] = matrix[i][2];
+    //    //movingCatheterNormal[i] = matrix[2][i];
+    //    movingCatheterOrigin[i] = offset[i];
+    //    }
+    //  }
+
+    typedef itk::AffineTransform< double, 3 > AffineTransformType;
+    AffineTransformType::Pointer atrans = AffineTransformType::New();
+    AffineTransformType::InverseTransformBaseType::Pointer itrans;
+    AffineTransformType::Pointer iatrans;
+    AffineTransformType::MatrixType matrix;
+    AffineTransformType::InverseMatrixType imatrix;
+    AffineTransformType::OffsetType offset;
+    
+    atrans->SetIdentity();
+    std::cerr << "fixed catheter parameters: " << fixedCatheterTransform->GetParameters() << std::endl;
+    atrans->SetParameters(fixedCatheterTransform->GetParameters());
+    
+    std::cerr << "transform: " << atrans->GetMatrix() << std::endl;
+    itrans = atrans->GetInverseTransform();
+    iatrans = dynamic_cast<AffineTransformType *>(itrans.GetPointer() );
+    //imatrix = atrans->GetInverseMatrix();
+    //matrix = atrans->GetMatrix();
+    matrix = iatrans->GetMatrix();
+    offset = iatrans->GetOffset();
+    for (int i = 0; i < 3; i ++)
       {
-      //FloatMatrixOffsetType::MatrixType matrix = ffa->GetMatrix();  // Cannot do this
-      vnl_matrix<double> t(3, 3);
-      for( int i = 0; i < 3; ++i )
-        {
-        for( int j = 0; j < 3; ++j )
-          {
-          t.put(i, j, ffa->GetMatrix().GetVnlMatrix().get(i, j) );
-          }
-        }
-      vnl_svd<double> svd( t );
-      //vnl_svd<float> svd(ffa->GetMatrix().GetVnlMatrix() );
-      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-      FloatMatrixOffsetType::OffsetType offset = ffa->GetOffset();
-      std::cerr << "transform: " << matrix << std::endl;
-      for (int i = 0; i < 3; i ++)
-        {
-        axisNormal[i] = matrix[i][2];
-        //axisNormal[i] = matrix[2][i];
-        axisOrigin[i] = offset[i];
-        }
-      }
-    else if (fda)
-      {
-      //DoubleMatrixOffsetType::MatrixType matrix = fda->GetMatrix(); // Cannot do this
-      vnl_svd<double> svd(fda->GetMatrix().GetVnlMatrix() );
-      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-      DoubleMatrixOffsetType::OffsetType offset = fda->GetOffset();
-      std::cerr << "transform: " << matrix << std::endl;
-      for (int i = 0; i < 3; i ++)
-        {
-        axisNormal[i] = matrix[i][2];
-        //axisNormal[i] = matrix[2][i];
-        axisOrigin[i] = offset[i];
-        }
+      axisNormal[i] = matrix[i][2];
+      axisOrigin[i] = offset[i];
       }
     
-    if (mfa)
-      {
-      //FloatMatrixOffsetType::MatrixType matrix = mfa->GetMatrix();
-      vnl_matrix<double> t(3, 3);
-      for( int i = 0; i < 3; ++i )
-        {
-        for( int j = 0; j < 3; ++j )
-          {
-          t.put(i, j, mfa->GetMatrix().GetVnlMatrix().get(i, j) );
-          }
-        }
-      vnl_svd<double> svd( t );
-      //vnl_svd<float> svd(mfa->GetMatrix().GetVnlMatrix() );
-      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-      FloatMatrixOffsetType::OffsetType offset = mfa->GetOffset();
-      for (int i = 0; i < 3; i ++)
-        {
-        movingCatheterNormal[i] = matrix[i][2];
-        //movingCatheterNormal[i] = matrix[2][i];
-        movingCatheterOrigin[i] = offset[i];
-        }
-      }
-    else if (mda)
-      {
-      //DoubleMatrixOffsetType::MatrixType matrix = mda->GetMatrix();
-      vnl_svd<double> svd(mda->GetMatrix().GetVnlMatrix());
-      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-      DoubleMatrixOffsetType::OffsetType offset = mda->GetOffset();
-      for (int i = 0; i < 3; i ++)
-        {
-        movingCatheterNormal[i] = matrix[i][2];
-        //movingCatheterNormal[i] = matrix[2][i];
-        movingCatheterOrigin[i] = offset[i];
-        }
-      }
-
-    //typedef itk::AffineTransform< double, 3 > AffineTransformType;
-    //AffineTransformType::Pointer atrans = AffineTransformType::New();
-    //AffineTransformType::MatrixType matrix;
-    //AffineTransformType::OffsetType offset;
-    //
-    //atrans->SetIdentity();
-    //std::cerr << "fixed catheter parameters: " << fixedCatheterTransform->GetParameters() << std::endl;
-    //atrans->SetParameters(fixedCatheterTransform->GetParameters());
-    //
-    //std::cerr << "transform: " << atrans->GetMatrix() << std::endl;
+    atrans->SetIdentity();
+    atrans->SetParameters(movingCatheterTransform->GetParameters());
     //matrix = atrans->GetMatrix();
+    itrans = atrans->GetInverseTransform();
+    iatrans = dynamic_cast<AffineTransformType *>(itrans.GetPointer() );
+    //imatrix = atrans->GetInverseMatrix();
     //offset = atrans->GetOffset();
-    //for (int i = 0; i < 3; i ++)
-    //  {
-    //  axisNormal[i] = matrix[i][2];
-    //  axisOrigin[i] = offset[i];
-    //  }
-    //
-    //atrans->SetIdentity();
-    //atrans->SetParameters(movingCatheterTransform->GetParameters());
-    //matrix = atrans->GetMatrix();
-    //offset = atrans->GetOffset();
-    //for (int i = 0; i < 3; i ++)
-    //  {
-    //  movingCatheterNormal[i] = matrix[i][2];
-    //  movingCatheterOrigin[i] = offset[i];
-    //  }
+    matrix = iatrans->GetMatrix();
+    offset = iatrans->GetOffset();
+    for (int i = 0; i < 3; i ++)
+      {
+      movingCatheterNormal[i] = matrix[i][2];
+      movingCatheterOrigin[i] = offset[i];
+      }
 
     axisNormal.normalize();
     movingCatheterNormal.normalize();
@@ -774,6 +786,8 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     std::cout << "baseAngle:        " << baseAngle << std::endl;
     std::cout << "Transform Axis:   " << axisNormal << std::endl;
     std::cout << "Transform Origin: " << axisOrigin << std::endl;
+    std::cout << "moving Catheter Axis:   " << movingCatheterNormal << std::endl;
+    std::cout << "moving Catheter Origin: " << movingCatheterOrigin << std::endl;
     std::cout << "Base Translation: " << baseTranslation << std::endl;
     std::cout << "Base Rotation:    " << baseRotation << std::endl;
     cathMatchTransform->SetTransformAxis(axisOrigin, axisNormal);
@@ -947,6 +961,8 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     std::cerr << "Last parameter = "
               << registration->GetLastTransformParameters() << std::endl;
     TransformType::ParametersType parameters = registration->GetLastTransformParameters();
+    parameters[0] += TestOffset;
+    parameters[1] += TestAngleOffset/3.14159265358979;
     cathMatchTransform->SetParameters( parameters);
     std::cerr << "Matrix = "
               << cathMatchTransform->GetMatrix() << std::endl;

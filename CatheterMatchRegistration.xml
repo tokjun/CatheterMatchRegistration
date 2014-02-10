@@ -172,5 +172,31 @@
       <channel>output</channel>
       <description><![CDATA[Resampled moving image to the fixed image coordinate frame. Optional (specify an output transform or an output volume or both).]]></description>
     </image>
+    <double>
+      <name>TestOffset</name>
+      <longflag>TestOffset</longflag>
+      <longflag>testoffset</longflag>
+      <description><![CDATA[Test offset]]></description>
+      <label>Offset along the catheter</label>
+      <default>0.0</default>
+      <constraints>
+        <minimum>0.0</minimum>
+        <maximum>500.0</maximum>
+        <step>1.0</step>
+      </constraints>
+    </double>
+    <double>
+      <name>TestAngleOffset</name>
+      <longflag>TestAngleOffset</longflag>
+      <longflag>testangleoffset</longflag>
+      <description><![CDATA[Test angle offset]]></description>
+      <label>Angle around the catheter</label>
+      <default>0.0</default>
+      <constraints>
+        <minimum>-180.0</minimum>
+        <maximum>180.0</maximum>
+        <step>1.0</step>
+      </constraints>
+    </double>
   </parameters>
 </executable>
