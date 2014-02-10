@@ -194,8 +194,6 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
 
   typedef itk::ThresholdImageFilter<FixedImageType>  FixedThresholdFilterType;
   typedef itk::ThresholdImageFilter<MovingImageType>  MovingThresholdFilterType;
-  //typedef itk::MaskImageFilter<FixedImageType, FixedImageType, FixedImageType>  FixedMaskFilterType;
-  //typedef itk::MaskImageFilter<MovingImageType, MovingImageType, MovingImageType>  MovingMaskFilterType;
   typedef itk::ResampleImageFilter<FixedImageType, MaskImageType>     FixedResampleType;
   typedef itk::ResampleImageFilter<MovingImageType, MaskImageType>    MovingResampleType;
   typedef itk::NearestNeighborInterpolateImageFunction<FixedImageType> FixedNNInterpolator;
@@ -475,19 +473,6 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     movingResample->ReleaseDataFlagOn();
     movingResample->Update();
 
-    //// Mask images
-    //typename FixedMaskFilterType::Pointer fixedMaskFilter = FixedMaskFilterType::New();
-    //fixedMaskFilter->SetInput( 0, fixedReader->GetOutput() );
-    //fixedMaskFilter->SetInput( 1, fixedResample->GetOutput() );
-    //fixedMaskFilter->SetOutsideValue( 0 );
-    //fixedMaskFilter->Update();
-    //
-    //typename MovingMaskFilterType::Pointer movingMaskFilter = MovingMaskFilterType::New();
-    //movingMaskFilter->SetInput( 0, movingReader->GetOutput() );
-    //movingMaskFilter->SetInput( 1, movingResample->GetOutput() );
-    //movingMaskFilter->SetOutsideValue( 0 );
-    //movingMaskFilter->Update();
-
     fixedSpatialObjectMask->SetImage( fixedResample->GetOutput());
     movingSpatialObjectMask->SetImage( movingResample->GetOutput());
     }    
@@ -651,81 +636,13 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     FloatMatrixOffsetType::Pointer mfa
       = dynamic_cast<FloatMatrixOffsetType *>(movingCatheterTransform.GetPointer() );
     
-    
-    //if (ffa)
-    //  {
-    //  //FloatMatrixOffsetType::MatrixType matrix = ffa->GetMatrix();  // Cannot do this
-    //  vnl_matrix<double> t(3, 3);
-    //  for( int i = 0; i < 3; ++i )
-    //    {
-    //    for( int j = 0; j < 3; ++j )
-    //      {
-    //      t.put(i, j, ffa->GetMatrix().GetVnlMatrix().get(i, j) );
-    //      }
-    //    }
-    //  vnl_svd<double> svd( t );
-    //  //vnl_svd<float> svd(ffa->GetMatrix().GetVnlMatrix() );
-    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-    //  FloatMatrixOffsetType::OffsetType offset = ffa->GetOffset();
-    //  std::cerr << "transform: " << matrix << std::endl;
-    //  for (int i = 0; i < 3; i ++)
-    //    {
-    //    axisNormal[i] = matrix[i][2];
-    //    //axisNormal[i] = matrix[2][i];
-    //    axisOrigin[i] = offset[i];
-    //    }
-    //  }
-    //else if (fda)
-    //  {
-    //  //DoubleMatrixOffsetType::MatrixType matrix = fda->GetMatrix(); // Cannot do this
-    //  vnl_svd<double> svd(fda->GetMatrix().GetVnlMatrix() );
-    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-    //  DoubleMatrixOffsetType::OffsetType offset = fda->GetOffset();
-    //  std::cerr << "transform: " << matrix << std::endl;
-    //  for (int i = 0; i < 3; i ++)
-    //    {
-    //    axisNormal[i] = matrix[i][2];
-    //    //axisNormal[i] = matrix[2][i];
-    //    axisOrigin[i] = offset[i];
-    //    }
-    //  }
-    //
-    //if (mfa)
-    //  {
-    //  //FloatMatrixOffsetType::MatrixType matrix = mfa->GetMatrix();
-    //  vnl_matrix<double> t(3, 3);
-    //  for( int i = 0; i < 3; ++i )
-    //    {
-    //    for( int j = 0; j < 3; ++j )
-    //      {
-    //      t.put(i, j, mfa->GetMatrix().GetVnlMatrix().get(i, j) );
-    //      }
-    //    }
-    //  vnl_svd<double> svd( t );
-    //  //vnl_svd<float> svd(mfa->GetMatrix().GetVnlMatrix() );
-    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-    //  FloatMatrixOffsetType::OffsetType offset = mfa->GetOffset();
-    //  for (int i = 0; i < 3; i ++)
-    //    {
-    //    movingCatheterNormal[i] = matrix[i][2];
-    //    //movingCatheterNormal[i] = matrix[2][i];
-    //    movingCatheterOrigin[i] = offset[i];
-    //    }
-    //  }
-    //else if (mda)
-    //  {
-    //  //DoubleMatrixOffsetType::MatrixType matrix = mda->GetMatrix();
-    //  vnl_svd<double> svd(mda->GetMatrix().GetVnlMatrix());
-    //  DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
-    //  DoubleMatrixOffsetType::OffsetType offset = mda->GetOffset();
-    //  for (int i = 0; i < 3; i ++)
-    //    {
-    //    movingCatheterNormal[i] = matrix[i][2];
-    //    //movingCatheterNormal[i] = matrix[2][i];
-    //    movingCatheterOrigin[i] = offset[i];
-    //    }
-    //  }
 
+    ////
+    // NOTE: Since the CLI imports inverse transforms, we need to calculate inverse of
+    //  the imported transforms for catheters. 
+    // 
+    // TODO: Check file type before setting the pointer to AssineTransformType
+    //
     typedef itk::AffineTransform< double, 3 > AffineTransformType;
     AffineTransformType::Pointer atrans = AffineTransformType::New();
     AffineTransformType::InverseTransformBaseType::Pointer itrans;
@@ -735,14 +652,10 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     AffineTransformType::OffsetType offset;
     
     atrans->SetIdentity();
-    std::cerr << "fixed catheter parameters: " << fixedCatheterTransform->GetParameters() << std::endl;
     atrans->SetParameters(fixedCatheterTransform->GetParameters());
-    
     std::cerr << "transform: " << atrans->GetMatrix() << std::endl;
     itrans = atrans->GetInverseTransform();
     iatrans = dynamic_cast<AffineTransformType *>(itrans.GetPointer() );
-    //imatrix = atrans->GetInverseMatrix();
-    //matrix = atrans->GetMatrix();
     matrix = iatrans->GetMatrix();
     offset = iatrans->GetOffset();
     for (int i = 0; i < 3; i ++)
@@ -753,11 +666,8 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     
     atrans->SetIdentity();
     atrans->SetParameters(movingCatheterTransform->GetParameters());
-    //matrix = atrans->GetMatrix();
     itrans = atrans->GetInverseTransform();
     iatrans = dynamic_cast<AffineTransformType *>(itrans.GetPointer() );
-    //imatrix = atrans->GetInverseMatrix();
-    //offset = atrans->GetOffset();
     matrix = iatrans->GetMatrix();
     offset = iatrans->GetOffset();
     for (int i = 0; i < 3; i ++)

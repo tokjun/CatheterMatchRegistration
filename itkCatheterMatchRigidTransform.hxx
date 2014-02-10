@@ -225,17 +225,24 @@ CatheterMatchRigidTransform<TScalar>
   jacobian.SetSize( 3, this->GetNumberOfLocalParameters() );
   jacobian.Fill(0.0);
 
+  TScalar d = this->m_Parameters[0];
+  TScalar theta = this->m_Parameters[1];
+
   // compute derivertive of rotation with respect to rotation angnle
-  InputVnlVectorType p_local = 
-    m_Rotation.rotate(p.GetVnlVector() + m_BaseTranslation - m_TransformAxisOrigin);
+  //InputVnlVectorType p_local = 
+  //  m_Rotation.rotate(p.GetVnlVector() + m_BaseTranslation - m_TransformAxisOrigin);
   // NOTE: (d * m_TransformAxisNormal) is not necessary because it does not change the distance between the transformed p_local and the axis
+
+  VnlQuaternionType q(m_TransformAxisNormal, theta);
+  InputVnlVectorType p_local = 
+    q.rotate(m_BaseRotation.rotate(p.GetVnlVector() + m_BaseTranslation - m_TransformAxisOrigin));
   
   // projection of p_local onto the transform axis
   InputVnlVectorType proj = m_TransformAxisNormal * dot_product(p_local, m_TransformAxisNormal);
 
   // Distance between p and the transform axis
   InputVnlVectorType perp = p_local - proj;
-  double d = perp.magnitude();
+  double r = perp.magnitude();
   
   // vector of derivertive
   InputVnlVectorType dp = vnl_cross_3d(m_TransformAxisNormal, p_local);
@@ -244,7 +251,7 @@ CatheterMatchRigidTransform<TScalar>
   for( unsigned int dim = 0; dim < SpaceDimension; dim++ )
     {
     jacobian[dim][0] = m_TransformAxisNormal[dim];  // translation part
-    jacobian[dim][1] = dp[dim] * d;                 // rotation part
+    jacobian[dim][1] = dp[dim] * r;                 // rotation part
     }
 }
 
