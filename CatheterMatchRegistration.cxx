@@ -23,17 +23,20 @@
 #include "itkNearestNeighborInterpolateImageFunction.h"
 #include "itkImageMaskSpatialObject.h"
 
-
 #include "itkQuaternionRigidTransformGradientDescentOptimizer.h"
+#include "itkCatheterMatchRigidTransformGradientDescentOptimizer.h"
 #include "itkImageRegistrationMethod.h"
 #include "itkMattesMutualInformationImageToImageMetric.h"
 #include "itkQuaternionRigidTransform.h"
+#include "itkCatheterMatchRigidTransform.h"
 #include "itkResampleImageFilter.h"
 #include "itkBinomialBlurImageFilter.h"
 
 #include "itkPluginUtilities.h"
 
 #include "itkTimeProbesCollectorBase.h"
+
+#include "vnl/vnl_cross.h"
 
 #define TESTMODE_ERROR_TOLERANCE 0.1
 
@@ -173,10 +176,16 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
 
   typedef itk::MattesMutualInformationImageToImageMetric<FixedImageType, MovingImageType> MetricType;    // ##
   typedef itk::QuaternionRigidTransformGradientDescentOptimizer                           OptimizerType;
+  typedef itk::CatheterMatchRigidTransformGradientDescentOptimizer                        CathMatchOptimizerType;
+  
   typedef itk::LinearInterpolateImageFunction<MovingImageType, double>                    InterpolatorType; // ##
   typedef itk::ImageRegistrationMethod<FixedImageType, MovingImageType>                   RegistrationType; // ##
   typedef itk::QuaternionRigidTransform<double>                                           TransformType;
+  typedef itk::CatheterMatchRigidTransform<double>                                        CathMatchTransformType;
+
   typedef OptimizerType::ScalesType                                                       OptimizerScalesType;
+  typedef CathMatchOptimizerType::ScalesType                                              CathMatchOptimizerScalesType;
+
   typedef itk::ResampleImageFilter<MovingImageType, MovingImageType>                      ResampleType;             // ##
   typedef itk::LinearInterpolateImageFunction<MovingImageType, double>                    ResampleInterpolatorType; // ##
   typedef itk::ImageFileWriter<MovingImageType>                                           WriterType;               // ##
@@ -235,14 +244,53 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     return EXIT_FAILURE;
     }
 
+  // CathMatch option (enabled only if both fixed and moving
+  // catheter transforms are specified
+  bool CathMatch = false;
+
+  // Check if any catheter transforms are specified
+  typedef itk::TransformFileReader TransformReaderType;
+  TransformReaderType::TransformType::Pointer fixedCatheterTransform;
+  TransformReaderType::TransformType::Pointer movingCatheterTransform;
+  TransformReaderType::Pointer fixedCatheterTransformReader;
+  TransformReaderType::Pointer movingCatheterTransformReader;
+  
+  if( FixedCatheterTransform != "" && MovingCatheterTransform != "")
+    {
+    fixedCatheterTransformReader = TransformReaderType::New();
+    movingCatheterTransformReader = TransformReaderType::New();
+    fixedCatheterTransformReader->SetFileName( FixedCatheterTransform );
+    movingCatheterTransformReader->SetFileName( MovingCatheterTransform );
+
+    try
+      {
+      fixedCatheterTransformReader->Update();
+      movingCatheterTransformReader->Update();
+      }
+    catch( itk::ExceptionObject & err )
+      {
+      std::cerr << err << std::endl;
+      return EXIT_FAILURE;
+      }
+
+    if (fixedCatheterTransformReader->GetTransformList()->size() != 0 &&
+        movingCatheterTransformReader->GetTransformList()->size() != 0)
+      {
+      fixedCatheterTransform = *(fixedCatheterTransformReader->GetTransformList()->begin() );
+      movingCatheterTransform = *(movingCatheterTransformReader->GetTransformList()->begin() );
+      CathMatch = true;
+      }
+    }
+
 
   // Read the fixed and moving mask images
-  bool fMask = false;
-
   typename FixedFileReaderType::Pointer fixedMaskReader;
   typename MovingFileReaderType::Pointer movingMaskReader;
 
-  if ( FixedMaskImageFileName.length() > 0 && MovingMaskImageFileName.length() > 0)
+  // Flag to use ROI. Enabled when fixed and moving mask images are specified.
+  bool fMask = false;
+
+  if ( FixedMaskImageFileName != "" && MovingMaskImageFileName != "")
     {
     fMask = true;
 
@@ -540,105 +588,296 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     sum += Iterations[i];
     }
 
-  typename OptimizerType::Pointer      optimizer     = OptimizerType::New();
-  optimizer->SetNumberOfIterations( sum );
-  optimizer->SetLearningRate( LearningRate[0] );
-  optimizer->AddObserver( itk::IterationEvent(), Schedule );
-
+  typename OptimizerType::Pointer optimizer;
+  typename CathMatchOptimizerType::Pointer cathMatchOptimizer;
   typename TransformType::Pointer transform = TransformType::New();
-  typedef OptimizerType::ScalesType OptimizerScalesType;
-  OptimizerScalesType scales( transform->GetNumberOfParameters() );
-  scales.Fill( 1.0 );
-  for( unsigned j = 4; j < 7; j++ )
+  typename CathMatchTransformType::Pointer cathMatchTransform = CathMatchTransformType::New();
+
+  if (CathMatch)
     {
-    scales[j] = 1.0 / vnl_math_sqr(TranslationScale);
+    cathMatchOptimizer     = CathMatchOptimizerType::New();
+    cathMatchOptimizer->SetNumberOfIterations( sum );
+    cathMatchOptimizer->SetLearningRate( LearningRate[0] );
+    cathMatchOptimizer->AddObserver( itk::IterationEvent(), Schedule );
+    
+    cathMatchTransform = CathMatchTransformType::New();
+    //typedef CathMatchOptimizerType::ScalesType CathMatchOptimizerScalesType;
+    CathMatchOptimizerScalesType scales( cathMatchTransform->GetNumberOfParameters() );
+    scales.Fill( 1.0 );
+    scales[0] = 1.0 / vnl_math_sqr(TranslationScale);
+    cathMatchOptimizer->SetScales( scales );
+    cathMatchOptimizer->SetMinimize( true );
     }
-  optimizer->SetScales( scales );
-  optimizer->SetMinimize( true );
+  else
+    {
+    optimizer     = OptimizerType::New();
+    optimizer->SetNumberOfIterations( sum );
+    optimizer->SetLearningRate( LearningRate[0] );
+    optimizer->AddObserver( itk::IterationEvent(), Schedule );
+    
+    transform = TransformType::New();
+    //typedef OptimizerType::ScalesType OptimizerScalesType;
+    OptimizerScalesType scales( transform->GetNumberOfParameters() );
+    scales.Fill( 1.0 );
+    for( unsigned j = 4; j < 7; j++ )
+      {
+      scales[j] = 1.0 / vnl_math_sqr(TranslationScale);
+      }
+    optimizer->SetScales( scales );
+    optimizer->SetMinimize( true );
+    }
+
 
   // Initialize the transform
   //
   //
-  typename TransformType::InputPointType centerFixed;
-  typename FixedImageType::RegionType::SizeType sizeFixed =
-    orientFixed->GetOutput()->GetLargestPossibleRegion().GetSize();
-  // Find the center
-  ContinuousIndexType indexFixed;
-  for( unsigned j = 0; j < 3; j++ )
+  if (CathMatch)
     {
-    indexFixed[j] = (sizeFixed[j] - 1) / 2.0;
-    }
-  orientFixed->GetOutput()->TransformContinuousIndexToPhysicalPoint( indexFixed, centerFixed );
+    CathMatchTransformType::InputVnlVectorType axisOrigin;
+    CathMatchTransformType::InputVnlVectorType axisNormal;
+    CathMatchTransformType::InputVnlVectorType baseTranslation;
+    CathMatchTransformType::VnlQuaternionType  baseRotation;
+    CathMatchTransformType::InputVnlVectorType movingCatheterOrigin;
+    CathMatchTransformType::InputVnlVectorType movingCatheterNormal;
 
-  typename TransformType::InputPointType centerMoving;
-  typename MovingImageType::RegionType::SizeType sizeMoving =
-    orientMoving->GetOutput()->GetLargestPossibleRegion().GetSize();
-  // Find the center
-  ContinuousIndexType indexMoving;
-  for( unsigned j = 0; j < 3; j++ )
-    {
-    indexMoving[j] = (sizeMoving[j] - 1) / 2.0;
-    }
-  orientMoving->GetOutput()->TransformContinuousIndexToPhysicalPoint( indexMoving, centerMoving );
-
-  transform->SetCenter( centerFixed );
-  transform->Translate(centerMoving - centerFixed);
-  std::cout << "Centering transform: "; transform->Print( std::cout );
-
-  // If an initial transformation was provided, then grab the rigid
-  // part and use it instead of the the centering transform.
-  // (Should this be instead of the centering transform or composed
-  // with the centering transform?
-  //
-  if( !TestingMode )
-    {
-    if( InitialTransform != ""
-        && initialTransform->GetTransformList()->size() != 0 )
+    typedef itk::MatrixOffsetTransformBase<double, 3, 3> DoubleMatrixOffsetType;
+    typedef itk::MatrixOffsetTransformBase<float, 3, 3>  FloatMatrixOffsetType;
+    DoubleMatrixOffsetType::Pointer fda
+      = dynamic_cast<DoubleMatrixOffsetType *>(fixedCatheterTransform.GetPointer() );
+    FloatMatrixOffsetType::Pointer ffa
+      = dynamic_cast<FloatMatrixOffsetType *>(fixedCatheterTransform.GetPointer() );
+    DoubleMatrixOffsetType::Pointer mda
+      = dynamic_cast<DoubleMatrixOffsetType *>(movingCatheterTransform.GetPointer() );
+    FloatMatrixOffsetType::Pointer mfa
+      = dynamic_cast<FloatMatrixOffsetType *>(movingCatheterTransform.GetPointer() );
+    
+    
+    if (ffa)
       {
-      TransformReaderType::TransformType::Pointer initial
-        = *(initialTransform->GetTransformList()->begin() );
-
-      // most likely, the transform coming in is a subclass of
-      // MatrixOffsetTransformBase
-      typedef itk::MatrixOffsetTransformBase<double, 3, 3> DoubleMatrixOffsetType;
-      typedef itk::MatrixOffsetTransformBase<float, 3, 3>  FloatMatrixOffsetType;
-
-      DoubleMatrixOffsetType::Pointer da
-        = dynamic_cast<DoubleMatrixOffsetType *>(initial.GetPointer() );
-      FloatMatrixOffsetType::Pointer fa
-        = dynamic_cast<FloatMatrixOffsetType *>(initial.GetPointer() );
-
-      if( da )
+      //FloatMatrixOffsetType::MatrixType matrix = ffa->GetMatrix();  // Cannot do this
+      vnl_matrix<double> t(3, 3);
+      for( int i = 0; i < 3; ++i )
         {
-        vnl_svd<double> svd(da->GetMatrix().GetVnlMatrix() );
-
-        transform->SetMatrix( svd.U() * vnl_transpose(svd.V() ) );
-        transform->SetOffset( da->GetOffset() );
-        }
-      else if( fa )
-        {
-        vnl_matrix<double> t(3, 3);
-        for( int i = 0; i < 3; ++i )
+        for( int j = 0; j < 3; ++j )
           {
-          for( int j = 0; j < 3; ++j )
-            {
-            t.put(i, j, fa->GetMatrix().GetVnlMatrix().get(i, j) );
-            }
+          t.put(i, j, ffa->GetMatrix().GetVnlMatrix().get(i, j) );
           }
-
-        vnl_svd<double> svd( t );
-
-        transform->SetMatrix( svd.U() * vnl_transpose(svd.V() ) );
-        transform->SetOffset( fa->GetOffset() );
         }
-      else
+      vnl_svd<double> svd( t );
+      //vnl_svd<float> svd(ffa->GetMatrix().GetVnlMatrix() );
+      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+      FloatMatrixOffsetType::OffsetType offset = ffa->GetOffset();
+      std::cerr << "transform: " << matrix << std::endl;
+      for (int i = 0; i < 3; i ++)
         {
-        std::cout << "Initial transform is an unsupported type.\n";
+        axisNormal[i] = matrix[i][2];
+        //axisNormal[i] = matrix[2][i];
+        axisOrigin[i] = offset[i];
         }
+      }
+    else if (fda)
+      {
+      //DoubleMatrixOffsetType::MatrixType matrix = fda->GetMatrix(); // Cannot do this
+      vnl_svd<double> svd(fda->GetMatrix().GetVnlMatrix() );
+      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+      DoubleMatrixOffsetType::OffsetType offset = fda->GetOffset();
+      std::cerr << "transform: " << matrix << std::endl;
+      for (int i = 0; i < 3; i ++)
+        {
+        axisNormal[i] = matrix[i][2];
+        //axisNormal[i] = matrix[2][i];
+        axisOrigin[i] = offset[i];
+        }
+      }
+    
+    if (mfa)
+      {
+      //FloatMatrixOffsetType::MatrixType matrix = mfa->GetMatrix();
+      vnl_matrix<double> t(3, 3);
+      for( int i = 0; i < 3; ++i )
+        {
+        for( int j = 0; j < 3; ++j )
+          {
+          t.put(i, j, mfa->GetMatrix().GetVnlMatrix().get(i, j) );
+          }
+        }
+      vnl_svd<double> svd( t );
+      //vnl_svd<float> svd(mfa->GetMatrix().GetVnlMatrix() );
+      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+      FloatMatrixOffsetType::OffsetType offset = mfa->GetOffset();
+      for (int i = 0; i < 3; i ++)
+        {
+        movingCatheterNormal[i] = matrix[i][2];
+        //movingCatheterNormal[i] = matrix[2][i];
+        movingCatheterOrigin[i] = offset[i];
+        }
+      }
+    else if (mda)
+      {
+      //DoubleMatrixOffsetType::MatrixType matrix = mda->GetMatrix();
+      vnl_svd<double> svd(mda->GetMatrix().GetVnlMatrix());
+      DoubleMatrixOffsetType::MatrixType matrix = svd.U() * vnl_transpose(svd.V());
+      DoubleMatrixOffsetType::OffsetType offset = mda->GetOffset();
+      for (int i = 0; i < 3; i ++)
+        {
+        movingCatheterNormal[i] = matrix[i][2];
+        //movingCatheterNormal[i] = matrix[2][i];
+        movingCatheterOrigin[i] = offset[i];
+        }
+      }
 
-      std::cout << "Initial transform: "; transform->Print( std::cout );
+    //typedef itk::AffineTransform< double, 3 > AffineTransformType;
+    //AffineTransformType::Pointer atrans = AffineTransformType::New();
+    //AffineTransformType::MatrixType matrix;
+    //AffineTransformType::OffsetType offset;
+    //
+    //atrans->SetIdentity();
+    //std::cerr << "fixed catheter parameters: " << fixedCatheterTransform->GetParameters() << std::endl;
+    //atrans->SetParameters(fixedCatheterTransform->GetParameters());
+    //
+    //std::cerr << "transform: " << atrans->GetMatrix() << std::endl;
+    //matrix = atrans->GetMatrix();
+    //offset = atrans->GetOffset();
+    //for (int i = 0; i < 3; i ++)
+    //  {
+    //  axisNormal[i] = matrix[i][2];
+    //  axisOrigin[i] = offset[i];
+    //  }
+    //
+    //atrans->SetIdentity();
+    //atrans->SetParameters(movingCatheterTransform->GetParameters());
+    //matrix = atrans->GetMatrix();
+    //offset = atrans->GetOffset();
+    //for (int i = 0; i < 3; i ++)
+    //  {
+    //  movingCatheterNormal[i] = matrix[i][2];
+    //  movingCatheterOrigin[i] = offset[i];
+    //  }
+
+    axisNormal.normalize();
+    movingCatheterNormal.normalize();
+
+    // Compute base rotation in quaternion
+
+    //  - 1. Find a vector orthogonal to the fixed and moving catheters by
+    //       cross product
+    CathMatchTransformType::InputVnlVectorType baseRotationAxis;
+    baseRotationAxis = vnl_cross_3d(movingCatheterNormal, axisNormal);
+    double baseAngleSin = baseRotationAxis.magnitude();
+    double baseAngleCos = dot_product(movingCatheterNormal, axisNormal);
+    double baseAngle = vcl_atan2(baseAngleSin, baseAngleCos);
+
+    baseRotationAxis.normalize();
+    baseRotation = CathMatchTransformType::VnlQuaternionType(baseRotationAxis, baseAngle);
+    baseTranslation = axisOrigin - movingCatheterOrigin;
+
+    std::cout << "baseAngle:        " << baseAngle << std::endl;
+    std::cout << "Transform Axis:   " << axisNormal << std::endl;
+    std::cout << "Transform Origin: " << axisOrigin << std::endl;
+    std::cout << "Base Translation: " << baseTranslation << std::endl;
+    std::cout << "Base Rotation:    " << baseRotation << std::endl;
+    cathMatchTransform->SetTransformAxis(axisOrigin, axisNormal);
+    cathMatchTransform->SetBaseTransform(baseTranslation, baseRotation);
+    TransformType::ParametersType param = cathMatchTransform->GetParameters();
+    param[0] = 2.0;
+    param[1] = 1.0;
+    cathMatchTransform->SetParameters(param);
+    std::cerr << "returned parameter = " << cathMatchTransform->GetParameters() << std::endl;
+
+    param[0] = 0.0;
+    param[1] = 0.0;
+    cathMatchTransform->SetParameters(param);
+    std::cerr << "Matrix = "
+              << cathMatchTransform->GetMatrix() << std::endl;
+    std::cerr << "Offset = "
+              << cathMatchTransform->GetOffset() << std::endl;
+    std::cerr << "Center = "
+              << cathMatchTransform->GetCenter() << std::endl;
+    }
+  else
+    {
+    typename TransformType::InputPointType centerFixed;
+    typename FixedImageType::RegionType::SizeType sizeFixed =
+      orientFixed->GetOutput()->GetLargestPossibleRegion().GetSize();
+    // Find the center
+    ContinuousIndexType indexFixed;
+    for( unsigned j = 0; j < 3; j++ )
+      {
+      indexFixed[j] = (sizeFixed[j] - 1) / 2.0;
+      }
+    orientFixed->GetOutput()->TransformContinuousIndexToPhysicalPoint( indexFixed, centerFixed );
+    
+    typename TransformType::InputPointType centerMoving;
+    typename MovingImageType::RegionType::SizeType sizeMoving =
+      orientMoving->GetOutput()->GetLargestPossibleRegion().GetSize();
+    // Find the center
+    ContinuousIndexType indexMoving;
+    for( unsigned j = 0; j < 3; j++ )
+      {
+      indexMoving[j] = (sizeMoving[j] - 1) / 2.0;
+      }
+    orientMoving->GetOutput()->TransformContinuousIndexToPhysicalPoint( indexMoving, centerMoving );
+    
+    transform->SetCenter( centerFixed );
+    transform->Translate(centerMoving - centerFixed);
+    std::cout << "Centering transform: "; transform->Print( std::cout );
+    
+    // If an initial transformation was provided, then grab the rigid
+    // part and use it instead of the the centering transform.
+    // (Should this be instead of the centering transform or composed
+    // with the centering transform?
+    //
+    if( !TestingMode )
+      {
+      if( InitialTransform != ""
+          && initialTransform->GetTransformList()->size() != 0 )
+        {
+        TransformReaderType::TransformType::Pointer initial
+          = *(initialTransform->GetTransformList()->begin() );
+    
+        // most likely, the transform coming in is a subclass of
+        // MatrixOffsetTransformBase
+        typedef itk::MatrixOffsetTransformBase<double, 3, 3> DoubleMatrixOffsetType;
+        typedef itk::MatrixOffsetTransformBase<float, 3, 3>  FloatMatrixOffsetType;
+    
+        DoubleMatrixOffsetType::Pointer da
+          = dynamic_cast<DoubleMatrixOffsetType *>(initial.GetPointer() );
+        FloatMatrixOffsetType::Pointer fa
+          = dynamic_cast<FloatMatrixOffsetType *>(initial.GetPointer() );
+    
+        if( da )
+          {
+          vnl_svd<double> svd(da->GetMatrix().GetVnlMatrix() );
+    
+          transform->SetMatrix( svd.U() * vnl_transpose(svd.V() ) );
+          transform->SetOffset( da->GetOffset() );
+          }
+        else if( fa )
+          {
+          vnl_matrix<double> t(3, 3);
+          for( int i = 0; i < 3; ++i )
+            {
+            for( int j = 0; j < 3; ++j )
+              {
+              t.put(i, j, fa->GetMatrix().GetVnlMatrix().get(i, j) );
+              }
+            }
+    
+          vnl_svd<double> svd( t );
+    
+          transform->SetMatrix( svd.U() * vnl_transpose(svd.V() ) );
+          transform->SetOffset( fa->GetOffset() );
+          }
+        else
+          {
+          std::cout << "Initial transform is an unsupported type.\n";
+          }
+    
+        std::cout << "Initial transform: "; transform->Print( std::cout );
+        }
       }
     }
+  
 
   // Set up the metric
   //
@@ -660,27 +899,25 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   // Set up the registration
   //
   typename RegistrationType::Pointer registration = RegistrationType::New();
-  registration->SetTransform( transform );
-  registration->SetInitialTransformParameters( transform->GetParameters() );
-  registration->SetMetric( metric );
-  registration->SetOptimizer( optimizer );
+  if (CathMatch)
+    {
+    registration->SetTransform( cathMatchTransform );
+    registration->SetInitialTransformParameters( cathMatchTransform->GetParameters() );
+    registration->SetMetric( metric );
+    registration->SetOptimizer( cathMatchOptimizer );
+    }
+  else
+    {
+    registration->SetTransform( transform );
+    registration->SetInitialTransformParameters( transform->GetParameters() );
+    registration->SetMetric( metric );
+    registration->SetOptimizer( optimizer );
+    }
+
   registration->SetInterpolator( interpolator );
   registration->SetFixedImage( orientFixed->GetOutput() );
   registration->SetMovingImage( orientMoving->GetOutput() );
 
-  
-/*
-typename FixedWriterType::Pointer fixedWriter2 = FixedWriterType::New();
-fixedWriter2->SetFileName ( "/tmp/reginput-fixed.nrrd" );
-fixedWriter2->SetInput ( orientFixed->GetOutput() );
-fixedWriter2->Write();
-
-typename WriterType::Pointer movingWriter2 = WriterType::New();
-movingWriter2->SetFileName ( "/tmp/reginput-moving.nrrd" );
-movingWriter2->SetInput ( orientMoving->GetOutput() );
-movingWriter2->Write();
-*/
-// Force an iteration event to trigger a progress event
   Schedule->SetRegistration( registration );
 
   try
@@ -704,15 +941,37 @@ movingWriter2->Write();
     return EXIT_FAILURE;
     }
 
-  transform->SetParameters( registration->GetLastTransformParameters() );
 
+  if (CathMatch)  
+    {
+    std::cerr << "Last parameter = "
+              << registration->GetLastTransformParameters() << std::endl;
+    TransformType::ParametersType parameters = registration->GetLastTransformParameters();
+    cathMatchTransform->SetParameters( parameters);
+    std::cerr << "Matrix = "
+              << cathMatchTransform->GetMatrix() << std::endl;
+    std::cerr << "Offset = "
+              << cathMatchTransform->GetOffset() << std::endl;
+    std::cerr << "Center = "
+              << cathMatchTransform->GetCenter() << std::endl;
+    transform->SetMatrix( cathMatchTransform->GetMatrix() );
+    transform->SetTranslation( cathMatchTransform->GetTranslation() );
+    transform->SetOffset( cathMatchTransform->GetOffset() );
+    transform->SetCenter( cathMatchTransform->GetCenter() );
+    }
+  else
+    {
+    transform->SetParameters( registration->GetLastTransformParameters() );
+    }
+    
   // compute eular angle and displacement
   double Ephi;          // roll
   double Etheta;        // pitch
   double Epsi;          // yaw
   double Edisplacement; // displacement
-
-  TransformType::ParametersType Eparams = registration->GetLastTransformParameters();
+  
+  //TransformType::ParametersType Eparams = registration->GetLastTransformParameters();
+  TransformType::ParametersType Eparams = transform->GetParameters();
   Edisplacement = sqrt( Eparams[4] * Eparams[4] + Eparams[5] * Eparams[5] + Eparams[6] * Eparams[6] );
   Ephi =
     atan(2
@@ -723,24 +982,26 @@ movingWriter2->Write();
     atan(2
          * (Eparams[0] * Eparams[3] + Eparams[1]
             * Eparams[2]) / (1 - 2 * (Eparams[2] * Eparams[2] + Eparams[3] * Eparams[3]) ) );
-
+  
   Ephi *= 180 / 3.14159265;
   Etheta *= 180 / 3.14159265;
   Epsi *= 180 / 3.14159265;
-
+  
   std::cout << "\nRoll: " << Ephi;
   std::cout << " Pitch: " << Etheta;
   std::cout << " Yaw: " << Epsi;
   std::cout << " Displacement: " << Edisplacement << std::endl;
 
+
   if( OutputTransform != "" )
     {
     typedef itk::TransformFileWriter TransformWriterType;
     TransformWriterType::Pointer outputTransformWriter;
-
+    
     outputTransformWriter = TransformWriterType::New();
     outputTransformWriter->SetFileName( OutputTransform );
     outputTransformWriter->SetInput( transform );
+
     try
       {
       outputTransformWriter->Update();
@@ -767,7 +1028,14 @@ movingWriter2->Write();
                                            1.0 / 5.0, 4.0 / 5.0);
 
     resample->SetInput( movingReader->GetOutput() );
-    resample->SetTransform( transform );
+    if (CathMatch)
+      {
+      resample->SetTransform( cathMatchTransform );
+      }
+    else
+      {
+      resample->SetTransform( transform );
+      }
     resample->SetInterpolator( Interpolator );
 
     // Set the output sampling based on the fixed image.
