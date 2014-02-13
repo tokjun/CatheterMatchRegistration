@@ -445,12 +445,12 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     // Threshold to remove labels other than 1
     fixedThresholdFilter->SetInput(0, fixedMaskReader->GetOutput() );
     fixedThresholdFilter->SetOutsideValue(0);
-    fixedThresholdFilter->ThresholdOutside(1, 1);
+    fixedThresholdFilter->ThresholdOutside(1, 255);
     fixedThresholdFilter->ReleaseDataFlagOn();
 
     movingThresholdFilter->SetInput(0, movingMaskReader->GetOutput() );
     movingThresholdFilter->SetOutsideValue(0);
-    movingThresholdFilter->ThresholdOutside(1, 1);
+    movingThresholdFilter->ThresholdOutside(1, 255);
     movingThresholdFilter->ReleaseDataFlagOn();
 
     // Resample
