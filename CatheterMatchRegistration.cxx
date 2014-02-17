@@ -680,8 +680,12 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     movingCatheterNormal.normalize();
 
     // Compute base rotation in quaternion
+    // - 0. Adjust the moving catheter position (shift the origin to the point on the catheter
+    // closest to the origin of the fixed cathter). 
+    CathMatchTransformType::InputVnlVectorType v = axisOrigin - movingCatheterOrigin;
+    movingCatheterOrigin = movingCatheterOrigin + dot_product(v, movingCatheterNormal) * movingCatheterNormal;
 
-    //  - 1. Find a vector orthogonal to the fixed and moving catheters by
+    // - 1. Find a vector orthogonal to the fixed and moving catheters by
     //       cross product
     CathMatchTransformType::InputVnlVectorType baseRotationAxis;
     baseRotationAxis = vnl_cross_3d(movingCatheterNormal, axisNormal);
@@ -703,11 +707,8 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     cathMatchTransform->SetTransformAxis(axisOrigin, axisNormal);
     cathMatchTransform->SetBaseTransform(baseTranslation, baseRotation);
     TransformType::ParametersType param = cathMatchTransform->GetParameters();
-    param[0] = 2.0;
-    param[1] = 1.0;
-    cathMatchTransform->SetParameters(param);
-    std::cerr << "returned parameter = " << cathMatchTransform->GetParameters() << std::endl;
 
+    // Calculate initial parameter
     param[0] = 0.0;
     param[1] = 0.0;
     cathMatchTransform->SetParameters(param);

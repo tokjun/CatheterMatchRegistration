@@ -92,11 +92,11 @@
       <name>TranslationScale</name>
       <longflag>translationscale</longflag>
       <flag>t</flag>
-      <description><![CDATA[Relative scale of translations to rotations, i.e. a value of 100 means 10mm = 1 degree. (Actual scale used 1/(TranslationScale^2)). This parameter is used to "weight" or "standardized" the transform parameters and their effect on the registration objective function.]]></description>
+      <description><![CDATA[Relative scale of translations to rotations, i.e. a value of 100 means 10mm = 1 radian. (Actual scale used 1/(TranslationScale^2)). This parameter is used to "weight" or "standardized" the transform parameters and their effect on the registration objective function.]]></description>
       <label>Translation scaling</label>
       <default>100.0</default>
       <constraints>
-        <minimum>10.0</minimum>
+        <minimum>1.0</minimum>
         <maximum>500.0</maximum>
         <step>50.0</step>
       </constraints>
