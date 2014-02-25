@@ -25,7 +25,7 @@ endif()
 SEMMacroBuildCLI(
   NAME ${MODULE_NAME}
   ADDITIONAL_SRCS
-    itkCatheterMatchRigidTransformGradientDescentOptimizer.cxx
+    itkCatheterMatchRigidTransformOptimizer.cxx
   TARGET_LIBRARIES ModuleDescriptionParser ${ITK_LIBRARIES}
   LINK_DIRECTORIES ${ModuleDescriptionParser_BINARY_DIR}
   INCLUDE_DIRECTORIES

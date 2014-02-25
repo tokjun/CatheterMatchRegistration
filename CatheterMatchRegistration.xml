@@ -72,6 +72,7 @@
         <step>1000</step>
       </constraints>
     </integer>
+    <!--
     <integer-vector>
       <name>Iterations</name>
       <flag>i</flag>
@@ -80,6 +81,20 @@
       <label>Iterations</label>
       <default>1000,1000,500,200</default>
     </integer-vector>
+    -->
+    <integer>
+      <name>Iterations</name>
+      <flag>i</flag>
+      <longflag>iterations</longflag>
+      <description><![CDATA[Number of iterations.]]></description>
+      <label>Iterations</label>
+      <default>1000</default>
+      <constraints>
+        <minimum>1</minimum>
+        <maximum>100000</maximum>
+      </constraints>
+    </integer>
+    <!--
     <double-vector>
       <name>LearningRate</name>
       <flag>l</flag>
@@ -87,6 +102,15 @@
       <description><![CDATA[Comma separated list of learning rates. Learning rate is a scale factor on the gradient of the registration objective function (gradient with respect to the parameters of the transformation) used to update the parameters of the transformation during optimization. Smaller values cause the optimizer to take smaller steps through the parameter space. Larger values are typically used early in the registration process to take large jumps in parameter space followed by smaller values to home in on the optimum value of the registration objective function. Default is: 0.01, 0.005, 0.0005, 0.0002. Must have the same number of elements as iterations.]]></description>
       <label>Learning Rates</label>
       <default>0.01,0.005,0.0005,0.0002</default>
+    </double-vector>
+    -->
+    <double-vector>
+      <name>StepLength</name>
+      <flag>l</flag>
+      <longflag>steplength</longflag>
+      <description><![CDATA[Comma separated list of maximum and minimum step length.]]></description>
+      <label>Step Length (Max, Min)</label>
+      <default>0.01,0.0001</default>
     </double-vector>
     <double>
       <name>TranslationScale</name>

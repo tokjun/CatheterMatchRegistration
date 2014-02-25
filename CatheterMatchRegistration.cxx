@@ -23,11 +23,14 @@
 #include "itkNearestNeighborInterpolateImageFunction.h"
 #include "itkImageMaskSpatialObject.h"
 
-#include "itkQuaternionRigidTransformGradientDescentOptimizer.h"
-#include "itkCatheterMatchRigidTransformGradientDescentOptimizer.h"
+//#include "itkQuaternionRigidTransformGradientDescentOptimizer.h"
+#include "itkRegularStepGradientDescentOptimizer.h"
+//#include "itkCatheterMatchRigidTransformGradientDescentOptimizer.h"
+#include "itkCatheterMatchRigidTransformOptimizer.h"
 #include "itkImageRegistrationMethod.h"
 #include "itkMattesMutualInformationImageToImageMetric.h"
-#include "itkQuaternionRigidTransform.h"
+//#include "itkQuaternionRigidTransform.h"
+#include "itkVersorRigid3DTransform.h"
 #include "itkCatheterMatchRigidTransform.h"
 #include "itkResampleImageFilter.h"
 #include "itkBinomialBlurImageFilter.h"
@@ -59,53 +62,14 @@ public:
   /** Run-time type information (and related methods). */
   itkTypeMacro(ScheduleCommand, itk::Command);
 
-  void SetLearningRates( std::vector<double> & LearningRates )
-  {
-    m_LearningRates = LearningRates;
-  }
-
-  void SetNumberOfIterations( std::vector<int> & NumberOfIterations )
-  {
-    m_NumberOfIterations = NumberOfIterations;
-    this->m_NextChange = NumberOfIterations[0];
-  }
-
-  void SetSchedule( std::vector<int> & NumberOfIterations,
-                    std::vector<double> & LearningRates )
-  {
-    this->SetNumberOfIterations(NumberOfIterations);
-    this->SetLearningRates(LearningRates);
-  }
-
   void SetRegistration(itk::ProcessObject* reg)
   {
     m_Registration = reg;
   }
 
-  void DoExecute( itk::GradientDescentOptimizer* optimizer )
+  void SetCathMatch(bool b)
   {
-    if( m_Schedule < m_NumberOfIterations.size() - 1 )
-      {
-      if( static_cast<int>(optimizer->GetCurrentIteration() )
-          >= this->m_NumberOfIterations[m_Schedule] )
-        {
-        m_Schedule++;
-        optimizer->SetLearningRate( this->m_LearningRates[m_Schedule] );
-        this->m_NextChange = optimizer->GetCurrentIteration()
-          + this->m_NumberOfIterations[m_Schedule];
-        // std::cout << "Iteration: " << optimizer->GetCurrentIteration()
-        //          << " Parameters: " << optimizer->GetCurrentPosition()
-        //          << " LearningRate: " << optimizer->GetLearningRate()
-        //          << std::endl;
-//         std::cout << "<filter-comment>"
-//                   << "Iteration: "
-//                   << optimizer->GetCurrentIteration() << ", "
-//                   << " Switching LearningRate: "
-//                   << optimizer->GetLearningRate() << " "
-//                   << "</filter-comment>"
-//                   << std::endl;
-        }
-      }
+    m_CathMatch = b;
   }
 
   void Execute( itk::Object *caller, const itk::EventObject & event )
@@ -115,34 +79,31 @@ public:
 
   void Execute( const itk::Object *caller, const itk::EventObject & itkNotUsed(event) )
   {
-    itk::GradientDescentOptimizer* optimizer = (itk::GradientDescentOptimizer *)(const_cast<itk::Object *>(caller) );
-
-    std::cout << optimizer->GetCurrentIteration() << "   ";
-    std::cout << optimizer->GetCurrentPosition() << "   ";
-    std::cout << optimizer->GetValue() << std::endl;
-    if( m_Registration )
+    if (1/*m_CathMatch*/)
       {
-      // for our purposes, an iteration even is a progress event
-      // m_Registration->UpdateProgress( static_cast<double>(optimizer->GetCurrentIteration()) /
-      //                                static_cast<double>(optimizer->GetNumberOfIterations()));
-      }
-
-    if( optimizer->GetCurrentIteration() >= this->m_NextChange )
-      {
-      this->DoExecute( optimizer );
+      itk::RegularStepGradientDescentOptimizer* optimizer = (itk::RegularStepGradientDescentOptimizer *)(const_cast<itk::Object *>(caller) );
+      std::cout << optimizer->GetCurrentIteration() << "   ";
+      std::cout << optimizer->GetCurrentPosition() << "   ";
+      std::cout << optimizer->GetValue() << std::endl;
+      if( m_Registration )
+        {
+        // for our purposes, an iteration even is a progress event
+         m_Registration->UpdateProgress( static_cast<double>(optimizer->GetCurrentIteration()) /
+                                         static_cast<double>(optimizer->GetNumberOfIterations()));
+        }
       }
   }
 
 protected:
-  std::vector<int>            m_NumberOfIterations;
-  std::vector<double>         m_LearningRates;
   unsigned int                m_Schedule;
   unsigned int                m_NextChange;
   itk::ProcessObject::Pointer m_Registration;
+  bool                        m_CathMatch;
   ScheduleCommand()
   {
     m_Schedule = 0;
     m_Registration = 0;
+    m_CathMatch = false;
   }
 
   ~ScheduleCommand()
@@ -175,12 +136,16 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   typedef itk::OrientImageFilter<MovingImageType, MovingImageType> MovingOrientFilterType; // ##
 
   typedef itk::MattesMutualInformationImageToImageMetric<FixedImageType, MovingImageType> MetricType;    // ##
-  typedef itk::QuaternionRigidTransformGradientDescentOptimizer                           OptimizerType;
-  typedef itk::CatheterMatchRigidTransformGradientDescentOptimizer                        CathMatchOptimizerType;
+  //typedef itk::QuaternionRigidTransformGradientDescentOptimizer                           OptimizerType;
+  typedef itk::RegularStepGradientDescentOptimizer                                        OptimizerType;
+  //typedef itk::CatheterMatchRigidTransformGradientDescentOptimizer                        CathMatchOptimizerType;
+  //typedef itk::CatheterMatchRigidTransformOptimizer                        CathMatchOptimizerType;
+  typedef itk::RegularStepGradientDescentOptimizer                                       CathMatchOptimizerType;
   
   typedef itk::LinearInterpolateImageFunction<MovingImageType, double>                    InterpolatorType; // ##
   typedef itk::ImageRegistrationMethod<FixedImageType, MovingImageType>                   RegistrationType; // ##
-  typedef itk::QuaternionRigidTransform<double>                                           TransformType;
+  //typedef itk::QuaternionRigidTransform<double>                                           TransformType;
+  typedef itk::VersorRigid3DTransform< double >                                           TransformType;
   typedef itk::CatheterMatchRigidTransform<double>                                        CathMatchTransformType;
 
   typedef OptimizerType::ScalesType                                                       OptimizerScalesType;
@@ -564,14 +529,12 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   // Set up the optimizer
   //
   //
-  ScheduleCommand::Pointer Schedule = ScheduleCommand::New();
-  Schedule->SetSchedule( Iterations, LearningRate );
-
-  int sum = 0;
-  for( size_t i = 0; i < Iterations.size(); i++ )
+  if (StepLength.size() != 2)
     {
-    sum += Iterations[i];
+    std::cerr << "Illegal Max/Min step length." << std::endl;
+    return EXIT_FAILURE;
     }
+  ScheduleCommand::Pointer Schedule = ScheduleCommand::New();
 
   typename OptimizerType::Pointer optimizer;
   typename CathMatchOptimizerType::Pointer cathMatchOptimizer;
@@ -581,8 +544,9 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
   if (CathMatch)
     {
     cathMatchOptimizer     = CathMatchOptimizerType::New();
-    cathMatchOptimizer->SetNumberOfIterations( sum );
-    cathMatchOptimizer->SetLearningRate( LearningRate[0] );
+    cathMatchOptimizer->SetNumberOfIterations( Iterations );
+    cathMatchOptimizer->SetMaximumStepLength( StepLength[0] );
+    cathMatchOptimizer->SetMinimumStepLength( StepLength[1] );
     cathMatchOptimizer->AddObserver( itk::IterationEvent(), Schedule );
     
     cathMatchTransform = CathMatchTransformType::New();
@@ -592,22 +556,27 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
     scales[0] = 1.0 / vnl_math_sqr(TranslationScale);
     cathMatchOptimizer->SetScales( scales );
     cathMatchOptimizer->SetMinimize( true );
+
+    Schedule->SetCathMatch(true);
     }
   else
     {
     optimizer     = OptimizerType::New();
-    optimizer->SetNumberOfIterations( sum );
-    optimizer->SetLearningRate( LearningRate[0] );
+    optimizer->SetNumberOfIterations( Iterations );
+    optimizer->SetMaximumStepLength( StepLength[0] );
+    optimizer->SetMinimumStepLength( StepLength[1] );
     optimizer->AddObserver( itk::IterationEvent(), Schedule );
     
     transform = TransformType::New();
     //typedef OptimizerType::ScalesType OptimizerScalesType;
     OptimizerScalesType scales( transform->GetNumberOfParameters() );
     scales.Fill( 1.0 );
-    for( unsigned j = 4; j < 7; j++ )
+    //for( unsigned j = 4; j < 7; j++ )
+    for( unsigned j = 3; j < 6; j++ )
       {
       scales[j] = 1.0 / vnl_math_sqr(TranslationScale);
       }
+
     optimizer->SetScales( scales );
     optimizer->SetMinimize( true );
     }
