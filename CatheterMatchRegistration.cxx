@@ -891,12 +891,20 @@ int DoIt2( int argc, char * argv[], const T1 &, const T2 & )
 
   if( OutputTransform != "" )
     {
+    // Convert to affine transform
+    typedef itk::AffineTransform< double, 3 > AffineTransformType;
+    AffineTransformType::Pointer affine = AffineTransformType::New();
+    affine->SetIdentity();
+    affine->SetCenter( transform->GetCenter() );
+    affine->SetMatrix( transform->GetMatrix() );
+    affine->SetTranslation( transform->GetTranslation() );
+
     typedef itk::TransformFileWriter TransformWriterType;
     TransformWriterType::Pointer outputTransformWriter;
     
     outputTransformWriter = TransformWriterType::New();
     outputTransformWriter->SetFileName( OutputTransform );
-    outputTransformWriter->SetInput( transform );
+    outputTransformWriter->SetInput( affine );
 
     try
       {
